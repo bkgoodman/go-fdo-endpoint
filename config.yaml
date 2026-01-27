@@ -1,0 +1,34 @@
+# FDO Client Configuration
+
+# Basic settings
+blob_path: "cred.bin"
+debug: true
+fdo_version: 200
+
+# Device Initialization (DI) settings
+di:
+  url: "http://127.0.0.1:9999"
+  key: "ec384"
+  key_enc: "x509"
+
+# Cryptographic settings
+crypto:
+  cipher_suite: "A128GCM"
+  kex_suite: "ECDH384"
+
+# Transport settings
+transport:
+  insecure_tls: true
+  tpm_path: ""
+
+# Operation settings
+operation:
+  print_device: false
+  rv_only: false
+
+# Service Info Modules
+service_info:
+  download_dir: ""
+  echo_commands: false
+  wget_dir: ""
+  upload_paths: []

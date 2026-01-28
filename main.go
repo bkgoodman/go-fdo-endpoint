@@ -36,7 +36,6 @@ import (
 	"github.com/fido-device-onboard/go-fdo/cbor"
 	"github.com/fido-device-onboard/go-fdo/cose"
 	"github.com/fido-device-onboard/go-fdo/custom"
-	"github.com/fido-device-onboard/go-fdo/fsim"
 	fdohttp "github.com/fido-device-onboard/go-fdo/http"
 	"github.com/fido-device-onboard/go-fdo/kex"
 	"github.com/fido-device-onboard/go-fdo/protocol"
@@ -51,6 +50,9 @@ func init() {
 }
 
 func main() {
+	// Register the library's event handler to see FDO events
+	RegisterFDOEventHandler()
+
 	// Parse command line for config file path and special operation modes
 	configPath := "config.yaml"
 	var directTO2Addr string
@@ -390,16 +392,11 @@ func transferOwnership(ctx context.Context, rvInfo [][]protocol.RvInstruction, c
 }
 
 func performTO2(ctx context.Context, transport fdo.Transport, to1d *cose.Sign1[protocol.To1d, []byte], conf fdo.TO2Config) *fdo.DeviceCredential {
-	// Setup device modules - advertise sysconfig only (devmod is handled via TO2Config.Devmod)
-	fsims := map[string]serviceinfo.DeviceModule{
-		"fido_alliance": &fsim.Interop{},
-		"fdo.sysconfig": &fsim.SysConfig{
-			SetParameter: func(parameter, value string) error {
-				fmt.Printf("[SYSCONFIG] Received parameter: %s = %s\n", parameter, value)
-				return nil
-			},
-		},
-	}
+	// Create FSIM callbacks - you can customize this for different use cases
+	callbacks := CreateCustomFSIMCallbacks()
+
+	// Setup device modules using the callbacks
+	fsims := CreateFSIMModules(callbacks)
 
 	// Debug: Print what modules we're advertising
 	fmt.Printf("[DEBUG] Advertising modules: %v\n", getModuleNames(fsims))
@@ -429,15 +426,6 @@ func performTO2(ctx context.Context, transport fdo.Transport, to1d *cose.Sign1[p
 		return nil
 	}
 	return cred
-}
-
-// Helper function to get module names for debugging
-func getModuleNames(modules map[string]serviceinfo.DeviceModule) []string {
-	var names []string
-	for name := range modules {
-		names = append(names, name)
-	}
-	return names
 }
 
 // debugModuleWrapper wraps a DeviceModule to add debug logging

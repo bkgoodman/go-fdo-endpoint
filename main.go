@@ -393,7 +393,7 @@ func performTO2(ctx context.Context, transport fdo.Transport, to1d *cose.Sign1[p
 	// Setup device modules - advertise sysconfig only (devmod is handled via TO2Config.Devmod)
 	fsims := map[string]serviceinfo.DeviceModule{
 		"fido_alliance": &fsim.Interop{},
-		"fido.sysconfig": &fsim.SysConfig{
+		"fdo.sysconfig": &fsim.SysConfig{
 			SetParameter: func(parameter, value string) error {
 				fmt.Printf("[SYSCONFIG] Received parameter: %s = %s\n", parameter, value)
 				return nil

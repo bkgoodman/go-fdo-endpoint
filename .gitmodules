@@ -1,4 +1,4 @@
 [submodule "go-fdo"]
 	path = go-fdo
-	url = https://github.com/bkgoodman/go-fdo.git
+	url = /var/bkgdata/go-fdo-merge
 	branch = fdo20-merge3

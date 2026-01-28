@@ -7,7 +7,7 @@ fdo_version: 200
 
 # Device Initialization (DI) settings
 di:
-  url: "http://127.0.0.1:9999"
+  url: ""
   key: "ec384"
   key_enc: "x509"
 

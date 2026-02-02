@@ -1,0 +1,28 @@
+FDO Version Comparison - TO2 Runs
+====================================
+
+FDO 2.0 (using /fdo/200/msg/ endpoints):
+- Protocol: Uses FDO 2.0 message format (/fdo/200/msg/80, 82, 84, 86, 88, 90, 91)
+- Modules detected: fido_alliance, fdo.sysconfig, fdo.payload
+- Service Info: Abstracted through DeviceSvcInfo20 messages
+- Sysconfig: NO visible sysconfig parameter exchanges
+- Payload: NO visible payload chunk exchanges
+- Issue: Modules are detected but actual message exchanges are abstracted away
+
+FDO 1.0.1 (using /fdo/101/msg/ endpoints):
+- Protocol: Uses FDO 1.0.1 message format (/fdo/101/msg/60, 62, 64, 66, 68, 70)
+- Modules detected: fido_alliance, fdo.sysconfig, fdo.payload
+- Sysconfig: FULL ACTIVITY - 4 parameters processed:
+  * hostname = test-device-fdo200
+  * timezone = America/New_York
+  * ntp-server = time.google.com
+  * locale = en_US.UTF-8
+- Payload: FULL ACTIVITY - Detailed chunked transfers:
+  * payload-begin (application/octet-stream, 4096 bytes, SHA256: d734e111f36b2e4f4deb64df9c611a8580b2114a8df46bdfb8f4673042f441f5)
+  * payload-data-0 through payload-data-4 (5 chunks)
+  * payload-end (status: "Payload processed successfully")
+  * Second payload: payload-begin (application/invalid) - REJECTED
+
+CONCLUSION:
+- FDO 1.0.1: Working perfectly - full sysconfig and payload exchanges visible
+- FDO 2.0: Not working for sysconfig/payload - exchanges abstracted away, possibly not implemented

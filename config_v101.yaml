@@ -3,7 +3,7 @@
 # Basic settings
 blob_path: "cred.bin"
 debug: true
-fdo_version: 200
+fdo_version: 101
 
 # Device Initialization (DI) settings
 di:

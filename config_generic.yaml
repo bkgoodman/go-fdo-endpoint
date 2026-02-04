@@ -3,13 +3,13 @@
 # Basic settings
 blob_path: "cred.bin"
 debug: false
-fdo_version: 200
+fdo_version: 101
 
 # Device Initialization (DI) settings
-di:
-  url: "http://127.0.0.1:9999"
-  key: "ec384"
-  key_enc: "x509"
+# di:
+#   url: "http://127.0.0.1:9999"
+#   key: "ec384"
+#   key_enc: "x509"
 
 # Cryptographic settings
 crypto:

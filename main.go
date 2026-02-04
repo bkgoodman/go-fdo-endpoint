@@ -249,8 +249,12 @@ func performDI(ctx context.Context) error {
 	}
 
 	// Call DI server
-	transport := tlsTransport(config.DI.URL, nil)
+	transport := tlsTransportWithVersion(config.DI.URL, nil, protocol.Version(config.FDOVersion))
 	fmt.Printf("Initializing device with manufacturer...\n")
+
+	// Ensure context has the correct protocol version
+	ctx = protocol.ContextWithVersion(ctx, protocol.Version(config.FDOVersion))
+
 	cred, err := fdo.DI(ctx, transport, custom.DeviceMfgInfo{
 		KeyType:      keyType,
 		KeyEncoding:  keyEncoding,
@@ -424,6 +428,9 @@ func transferOwnership(ctx context.Context, rvInfo [][]protocol.RvInstruction, c
 }
 
 func performTO2(ctx context.Context, transport fdo.Transport, to1d *cose.Sign1[protocol.To1d, []byte], conf fdo.TO2Config) *fdo.DeviceCredential {
+	// Ensure context has the correct protocol version
+	ctx = protocol.ContextWithVersion(ctx, protocol.Version(config.FDOVersion))
+
 	// Try to load generic handler configuration
 	handlerManager, handlerErr := ValidateAndPrintHandlers("config_generic.yaml")
 	if handlerErr != nil {

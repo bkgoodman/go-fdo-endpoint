@@ -8,11 +8,217 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"text/template"
 
 	"gopkg.in/yaml.v3"
 )
+
+// ModifierType represents the type of modifier
+type ModifierType int
+
+const (
+	FilterModifier ModifierType = iota
+	ValidatorModifier
+)
+
+// Modifier represents a single variable modifier
+type Modifier struct {
+	Type ModifierType
+	Name string
+	Func func(string) (string, error)
+}
+
+// ParsedVariable represents a variable with its modifiers
+type ParsedVariable struct {
+	Variable  string
+	Modifiers []Modifier
+}
+
+// Built-in modifiers
+var builtInModifiers = map[string]Modifier{
+	// Filter modifiers
+	"nospace": {FilterModifier, "nospace", func(s string) (string, error) {
+		return strings.ReplaceAll(s, " ", ""), nil
+	}},
+	"underscore": {FilterModifier, "underscore", func(s string) (string, error) {
+		return strings.ReplaceAll(s, " ", "_"), nil
+	}},
+	"dash": {FilterModifier, "dash", func(s string) (string, error) {
+		return strings.ReplaceAll(s, " ", "-"), nil
+	}},
+	"lowercase": {FilterModifier, "lowercase", func(s string) (string, error) {
+		return strings.ToLower(s), nil
+	}},
+	"uppercase": {FilterModifier, "uppercase", func(s string) (string, error) {
+		return strings.ToUpper(s), nil
+	}},
+	"trim": {FilterModifier, "trim", func(s string) (string, error) {
+		return strings.TrimSpace(s), nil
+	}},
+	"slugify": {FilterModifier, "slugify", func(s string) (string, error) {
+		// Convert to lowercase, replace spaces with dashes, remove special chars
+		s = strings.ToLower(s)
+		s = strings.ReplaceAll(s, " ", "-")
+		reg := regexp.MustCompile(`[^a-z0-9\-]`)
+		return reg.ReplaceAllString(s, ""), nil
+	}},
+
+	// Validator modifiers
+	"username": {ValidatorModifier, "username", func(s string) (string, error) {
+		if !regexp.MustCompile(`^[a-zA-Z0-9_-]+$`).MatchString(s) {
+			return "", fmt.Errorf("invalid username format: only alphanumeric, underscore, and hyphen allowed")
+		}
+		return s, nil
+	}},
+	"password": {ValidatorModifier, "password", func(s string) (string, error) {
+		if strings.ContainsAny(s, "&|<>'$`") {
+			return "", fmt.Errorf("password contains unsafe characters")
+		}
+		return s, nil
+	}},
+	"email": {ValidatorModifier, "email", func(s string) (string, error) {
+		if !regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`).MatchString(s) {
+			return "", fmt.Errorf("invalid email format")
+		}
+		return s, nil
+	}},
+	"hostname": {ValidatorModifier, "hostname", func(s string) (string, error) {
+		if len(s) > 253 || len(s) == 0 {
+			return "", fmt.Errorf("hostname length must be between 1 and 253 characters")
+		}
+		if strings.HasPrefix(s, "-") || strings.HasSuffix(s, "-") {
+			return "", fmt.Errorf("hostname cannot start or end with hyphen")
+		}
+		if !regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?$`).MatchString(s) {
+			return "", fmt.Errorf("invalid hostname format")
+		}
+		return s, nil
+	}},
+	"required": {ValidatorModifier, "required", func(s string) (string, error) {
+		if strings.TrimSpace(s) == "" {
+			return "", fmt.Errorf("value is required")
+		}
+		return s, nil
+	}},
+}
+
+// ParseVariableSyntax parses a variable string with modifiers
+// Syntax: {variable:modifier1:modifier2}
+func ParseVariableSyntax(input string) (*ParsedVariable, error) {
+	// Check if it's a variable with modifiers
+	if !strings.HasPrefix(input, "{") || !strings.HasSuffix(input, "}") {
+		return nil, fmt.Errorf("not a variable syntax")
+	}
+
+	content := strings.Trim(input, "{}")
+	parts := strings.Split(content, ":")
+
+	if len(parts) < 1 {
+		return nil, fmt.Errorf("invalid variable syntax")
+	}
+
+	variable := parts[0]
+	var modifiers []Modifier
+
+	for i := 1; i < len(parts); i++ {
+		modName := parts[i]
+		modifier, exists := builtInModifiers[modName]
+		if !exists {
+			return nil, fmt.Errorf("unknown modifier: %s", modName)
+		}
+		modifiers = append(modifiers, modifier)
+	}
+
+	return &ParsedVariable{
+		Variable:  variable,
+		Modifiers: modifiers,
+	}, nil
+}
+
+// ApplyModifiers applies all modifiers to a value
+func ApplyModifiers(value string, modifiers []Modifier) (string, error) {
+	currentValue := value
+
+	for _, modifier := range modifiers {
+		if modifier.Type == FilterModifier {
+			// Filter modifiers change the value
+			result, err := modifier.Func(currentValue)
+			if err != nil {
+				return "", fmt.Errorf("filter modifier %s failed: %w", modifier.Name, err)
+			}
+			currentValue = result
+		} else if modifier.Type == ValidatorModifier {
+			// Validator modifiers can reject the value
+			_, err := modifier.Func(currentValue)
+			if err != nil {
+				return "", fmt.Errorf("validation failed: %w", err)
+			}
+		}
+	}
+
+	return currentValue, nil
+}
+
+// ProcessVariableWithModifiers processes a template variable with modifiers
+func (ghm *GenericHandlerManager) ProcessVariableWithModifiers(input string, vars map[string]interface{}) (string, error) {
+	// Check if it's a variable with modifiers
+	if strings.HasPrefix(input, "{") && strings.HasSuffix(input, "}") {
+		parsed, err := ParseVariableSyntax(input)
+		if err != nil {
+			// Not a valid variable syntax, treat as regular template
+			return ghm.processTemplate(input, vars)
+		}
+
+		// Get the raw value from vars
+		rawValue, exists := vars[parsed.Variable]
+		if !exists {
+			return "", fmt.Errorf("variable %s not found", parsed.Variable)
+		}
+
+		// Convert to string
+		valueStr, ok := rawValue.(string)
+		if !ok {
+			return "", fmt.Errorf("variable %s is not a string", parsed.Variable)
+		}
+
+		// Apply modifiers
+		finalValue, err := ApplyModifiers(valueStr, parsed.Modifiers)
+		if err != nil {
+			return "", err
+		}
+
+		return finalValue, nil
+	}
+
+	// Regular template processing
+	return ghm.processTemplate(input, vars)
+}
+
+// processTemplate handles regular template processing without modifiers
+func (ghm *GenericHandlerManager) processTemplate(input string, vars map[string]interface{}) (string, error) {
+	// Convert {var} syntax to {{.var}} syntax for Go templates
+	goTemplate := strings.ReplaceAll(input, "{value}", "{{.value}}")
+	goTemplate = strings.ReplaceAll(goTemplate, "{filename}", "{{.filename}}")
+	goTemplate = strings.ReplaceAll(goTemplate, "{mimetype}", "{{.mimetype}}")
+	goTemplate = strings.ReplaceAll(goTemplate, "{size}", "{{.size}}")
+	goTemplate = strings.ReplaceAll(goTemplate, "{parameter}", "{{.parameter}}")
+
+	// Parse the command template
+	tmpl, err := template.New("command").Parse(goTemplate)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse command template: %w", err)
+	}
+
+	// Execute the template
+	var commandBuf strings.Builder
+	if err := tmpl.Execute(&commandBuf, vars); err != nil {
+		return "", fmt.Errorf("failed to execute command template: %w", err)
+	}
+
+	return commandBuf.String(), nil
+}
 
 // HandlerConfig defines the structure for generic handlers
 type HandlerConfig struct {
@@ -140,30 +346,15 @@ func (ghm *GenericHandlerManager) HandlePayload(ctx context.Context, mimeType, n
 
 // executeCommandTemplate executes a command template with the provided variables
 func (ghm *GenericHandlerManager) executeCommandTemplate(commandTemplate string, vars map[string]interface{}) error {
-	// Convert {var} syntax to {{.var}} syntax for Go templates
-	goTemplate := strings.ReplaceAll(commandTemplate, "{value}", "{{.value}}")
-	goTemplate = strings.ReplaceAll(goTemplate, "{filename}", "{{.filename}}")
-	goTemplate = strings.ReplaceAll(goTemplate, "{mimetype}", "{{.mimetype}}")
-	goTemplate = strings.ReplaceAll(goTemplate, "{size}", "{{.size}}")
-	goTemplate = strings.ReplaceAll(goTemplate, "{parameter}", "{{.parameter}}")
-
-	// Parse the command template
-	tmpl, err := template.New("command").Parse(goTemplate)
+	// Process the entire command template to handle variables with modifiers
+	processedCommand, err := ghm.ProcessVariableWithModifiers(commandTemplate, vars)
 	if err != nil {
-		return fmt.Errorf("failed to parse command template: %w", err)
+		return fmt.Errorf("failed to process command template: %w", err)
 	}
-
-	// Execute the template
-	var commandBuf strings.Builder
-	if err := tmpl.Execute(&commandBuf, vars); err != nil {
-		return fmt.Errorf("failed to execute command template: %w", err)
-	}
-
-	command := commandBuf.String()
 
 	// Show both the template and the resolved command
 	fmt.Printf("[HANDLER] Template: %s\n", commandTemplate)
-	fmt.Printf("[HANDLER] Resolved: %s\n", command)
+	fmt.Printf("[HANDLER] Resolved: %s\n", processedCommand)
 
 	// For now, just echo the command (safe default)
 	// To enable actual command execution, uncomment the following:

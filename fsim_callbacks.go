@@ -105,39 +105,41 @@ type FDOEventHandler struct{}
 
 // HandleEvent processes FDO events from the library
 func (h *FDOEventHandler) HandleEvent(ctx context.Context, event fdo.Event) {
-	fmt.Printf("[🔥 LIBRARY EVENT] %s", event.Type.String())
+	fmt.Printf("*** EVENT HANDLER CALLED *** Type: %s\n", event.Type.String())
 
-	// Add event-specific details
-	switch event.Type {
-	case fdo.EventTypeTO2ServiceInfoStarted:
-		fmt.Printf(" - Service info exchange starting")
-	case fdo.EventTypeTO2ServiceInfoCompleted:
-		fmt.Printf(" - Service info exchange completed")
-	case fdo.EventTypeTO2Completed:
-		fmt.Printf(" - TO2 protocol completed successfully")
-	case fdo.EventTypeTO2Failed:
-		fmt.Printf(" - TO2 protocol failed")
-		if event.Error != nil {
-			fmt.Printf(" (Error: %v)", event.Error)
-		}
-	case fdo.EventTypeCertValidationFailed:
-		fmt.Printf(" - Certificate validation failed")
-		if event.Error != nil {
-			fmt.Printf(" (Error: %v)", event.Error)
-		}
-	}
-
-	// Show timestamp and protocol version
-	if !event.Timestamp.IsZero() {
-		fmt.Printf(" at %s", event.Timestamp.Format("15:04:05"))
-	}
+	// Dump ALL event data comprehensively
+	fmt.Printf("\n    Timestamp: %s", event.Timestamp.Format("2006-01-02 15:04:05.000"))
 	if event.ProtocolVersion > 0 {
-		fmt.Printf(" (v%d)", event.ProtocolVersion)
+		fmt.Printf("\n    Protocol: v%d", event.ProtocolVersion)
+	}
+	if event.GUID != nil {
+		fmt.Printf("\n    GUID: %x", *event.GUID)
+	}
+	if event.MessageType != nil {
+		fmt.Printf("\n    Message Type: %d", *event.MessageType)
+	}
+	if event.Error != nil {
+		fmt.Printf("\n    Error: %v", event.Error)
 	}
 
-	// Show GUID if available
-	if event.GUID != nil {
-		fmt.Printf(" [GUID: %x]", *event.GUID)
+	// Type-specific data
+	switch event.Type {
+	case fdo.EventTypeDIStarted:
+		fmt.Printf("\n    DI Started!")
+	case fdo.EventTypeDICompleted:
+		if data, ok := event.Data.(fdo.DIEventData); ok {
+			fmt.Printf("\n    DI Completed - Device: %s", data.DeviceInfo)
+		}
+	case fdo.EventTypeTO2Started:
+		fmt.Printf("\n    TO2 Started!")
+	case fdo.EventTypeTO2Completed:
+		if data, ok := event.Data.(fdo.TO2EventData); ok {
+			fmt.Printf("\n    TO2 Completed - Credential Reuse: %t, Attestation Mode: %v", data.CredentialReuse, data.AttestationMode)
+		}
+	case fdo.EventTypeTO2Failed:
+		if data, ok := event.Data.(fdo.TO2EventData); ok {
+			fmt.Printf("\n    TO2 Failed - Credential Reuse: %t, Attestation Mode: %v", data.CredentialReuse, data.AttestationMode)
+		}
 	}
 
 	fmt.Printf("\n")

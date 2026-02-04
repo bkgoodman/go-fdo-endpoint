@@ -1,0 +1,87 @@
+# Test Generic FDO Client Configuration
+
+# Basic settings
+blob_path: "cred.bin"
+debug: true
+fdo_version: 200
+
+# Device Initialization (DI) settings
+di:
+  url: "http://127.0.0.1:9999"
+  key: "ec384"
+  key_enc: "x509"
+
+# Cryptographic settings
+crypto:
+  cipher_suite: "A128GCM"
+  kex_suite: "ECDH384"
+
+# Transport settings
+transport:
+  insecure_tls: true
+  tpm_path: ""
+
+# Operation settings
+operation:
+  print_device: false
+  rv_only: false
+
+# Generic Handler Configuration
+handlers:
+  # SysConfig handlers - map parameter names to command templates
+  sysconfig:
+    hostname:
+      command: "echo 'Setting hostname to: {value}'"
+      enabled: true
+    timezone:
+      command: "echo 'Setting timezone to: {value}'"
+      enabled: true
+    ntp-server:
+      command: "echo 'Setting NTP server to: {value}'"
+      enabled: true
+    locale:
+      command: "echo 'Setting locale to: {value}'"
+      enabled: true
+    # Example of additional handlers
+    dns-server:
+      command: "echo 'Setting DNS server to: {value}'"
+      enabled: true
+
+  # Payload handlers
+  payload:
+    # Temporary directory for payload files
+    temp_dir: "/tmp/fdo_payloads"
+    
+    # Default action if no specific handler matches
+    default_action: "reject"  # Options: "reject", "accept", "require_handler"
+    
+    # MIME type specific handlers
+    mime_types:
+      application/octet-stream:
+        enabled: true
+        command: "echo 'Processing binary payload: {filename} ({size} bytes)'"
+        
+      application/json:
+        enabled: true
+        command: "echo 'Processing JSON payload: {filename}'"
+        
+      text/plain:
+        enabled: true
+        command: "echo 'Processing text payload: {filename}'"
+        
+      # Example of cloud-init handler
+      application/x-cloud-init:
+        enabled: true
+        command: "echo 'Applying cloud-init from: {filename}'"
+      
+      # Example of script handler
+      application/x-shellscript:
+        enabled: true
+        command: "echo 'Executing shell script: {filename}'"
+
+# Service Info Modules (legacy compatibility)
+service_info:
+  download_dir: ""
+  echo_commands: false
+  wget_dir: ""
+  upload_paths: []

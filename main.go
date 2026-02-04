@@ -57,11 +57,19 @@ func main() {
 	configPath := "config.yaml"
 	var directTO2Addr string
 	var diOnly bool
+	var runDemo bool
 
 	flag.StringVar(&configPath, "config", "config.yaml", "Path to configuration file")
 	flag.StringVar(&directTO2Addr, "to2", "", "Skip RV and directly attempt TO2 at specified address")
 	flag.BoolVar(&diOnly, "di", false, "Run only device initialization then stop")
+	flag.BoolVar(&runDemo, "demo", false, "Run generic handler demo")
 	flag.Parse()
+
+	// If demo mode is requested, run demo and exit
+	if runDemo {
+		demoHandlers()
+		return
+	}
 
 	// Load configuration
 	var err error
@@ -130,6 +138,7 @@ func runClient(ctx context.Context, directTO2Addr string, diOnly bool) error {
 		return fmt.Errorf("invalid key exchange cipher suite: %s", config.Crypto.CipherSuite)
 	}
 
+	fmt.Printf("Starting device onboarding process...\n")
 	newDC := transferOwnership(ctx, dc.RvInfo, fdo.TO2Config{
 		Cred:       *dc,
 		HmacSha256: hmacSha256,
@@ -147,6 +156,9 @@ func runClient(ctx context.Context, directTO2Addr string, diOnly bool) error {
 		CipherSuite:          kexCipherSuiteID,
 		AllowCredentialReuse: true,
 	})
+
+	// Flush all pending events before exit to ensure event handlers complete
+	fdo.FlushEvents()
 
 	if config.Operation.RVOnly {
 		return nil
@@ -177,12 +189,15 @@ func performDI(ctx context.Context) error {
 
 	switch config.DI.Key {
 	case "ec256":
+		sigAlg = x509.ECDSAWithSHA256
 		keyType = protocol.Secp256r1KeyType
 		key, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	case "ec384":
+		sigAlg = x509.ECDSAWithSHA384
 		keyType = protocol.Secp384r1KeyType
 		key, err = ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
 	case "rsa2048":
+		sigAlg = x509.SHA256WithRSA
 		keyType = protocol.Rsa2048RestrKeyType
 		key, err = rsa.GenerateKey(rand.Reader, 2048)
 	case "rsa3072":
@@ -204,9 +219,15 @@ func performDI(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("error creating CSR: %w", err)
 	}
-	csr, err := x509.ParseCertificateRequest(csrDER)
+	_, err = x509.ParseCertificateRequest(csrDER)
 	if err != nil {
 		return fmt.Errorf("error parsing CSR: %w", err)
+	}
+
+	// Parse the CSR to get the actual certificate request object
+	csr, err := x509.ParseCertificateRequest(csrDER)
+	if err != nil {
+		return fmt.Errorf("error parsing CSR for CertInfo: %w", err)
 	}
 
 	// Generate serial number
@@ -229,11 +250,12 @@ func performDI(ctx context.Context) error {
 
 	// Call DI server
 	transport := tlsTransport(config.DI.URL, nil)
+	fmt.Printf("Initializing device with manufacturer...\n")
 	cred, err := fdo.DI(ctx, transport, custom.DeviceMfgInfo{
 		KeyType:      keyType,
 		KeyEncoding:  keyEncoding,
 		SerialNumber: strconv.FormatInt(sn.Int64(), 10),
-		DeviceInfo:   "go-fdo-stub-client",
+		DeviceInfo:   "Generic FDO Device",
 		CertInfo:     cbor.X509CertificateRequest(*csr),
 	}, fdo.DIConfig{
 		HmacSha256: hmacSha256,
@@ -242,6 +264,15 @@ func performDI(ctx context.Context) error {
 	})
 	if err != nil {
 		return err
+	}
+
+	// Emit DI completed event since the library doesn't do it
+	if cred != nil {
+		fmt.Printf("Device initialization completed successfully\n")
+		// Create a dummy GUID for the event (DI doesn't have a real GUID)
+		guid := protocol.GUID{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10}
+		deviceInfo := fmt.Sprintf("Device %s, KeyType: %s", strconv.FormatInt(sn.Int64(), 10), keyType)
+		fdo.EmitDICompleted(ctx, guid, deviceInfo)
 	}
 
 	return saveCred(blob.DeviceCredential{
@@ -378,7 +409,8 @@ func transferOwnership(ctx context.Context, rvInfo [][]protocol.RvInstruction, c
 	}
 
 	// Try TO2 on each address only once
-	for _, baseURL := range to2URLs {
+	for i, baseURL := range to2URLs {
+		fmt.Printf("Attempting TO2 with server %d: %s\n", i+1, baseURL)
 		// Use version-aware transport for TO2
 		version := protocol.Version(config.FDOVersion)
 		transport := tlsTransportWithVersion(baseURL, nil, version)
@@ -392,18 +424,23 @@ func transferOwnership(ctx context.Context, rvInfo [][]protocol.RvInstruction, c
 }
 
 func performTO2(ctx context.Context, transport fdo.Transport, to1d *cose.Sign1[protocol.To1d, []byte], conf fdo.TO2Config) *fdo.DeviceCredential {
-	// Create FSIM callbacks - you can customize this for different use cases
-	callbacks := CreateCustomFSIMCallbacks()
+	// Try to load generic handler configuration
+	handlerManager, handlerErr := ValidateAndPrintHandlers("config_generic.yaml")
+	if handlerErr != nil {
+		fmt.Printf("[WARNING] Failed to load generic handlers: %v\n", handlerErr)
+		fmt.Printf("[INFO] Falling back to default FSIM callbacks\n")
 
-	// Setup device modules using the callbacks
-	fsims := CreateFSIMModules(callbacks)
-
-	// Debug: Print what modules we're advertising
-	fmt.Printf("[DEBUG] Advertising modules: %v\n", getModuleNames(fsims))
+		// Use default callbacks
+		callbacks := CreateCustomFSIMCallbacks()
+		conf.DeviceModules = CreateFSIMModules(callbacks)
+	} else {
+		// Use generic handlers
+		conf.DeviceModules = CreateGenericFSIMModules(handlerManager)
+	}
 
 	// Wrap modules to add debug logging for transitions
 	wrappedFsims := make(map[string]serviceinfo.DeviceModule)
-	for name, module := range fsims {
+	for name, module := range conf.DeviceModules {
 		wrappedFsims[name] = &debugModuleWrapper{
 			DeviceModule: module,
 			name:         name,
@@ -416,13 +453,13 @@ func performTO2(ctx context.Context, transport fdo.Transport, to1d *cose.Sign1[p
 	var cred *fdo.DeviceCredential
 	var err error
 	if config.FDOVersion == 200 {
-		cred, err = fdo.TO2v200(ctx, transport, to1d, conf)
+		cred, err = fdo.TO2v200(ctx, transport, to1d, &conf)
 	} else {
 		cred, err = fdo.TO2(ctx, transport, to1d, conf)
 	}
 	if err != nil {
 		slog.Error("TO2 failed", "error", err)
-		fmt.Printf("TO2 failed with error: %v\n", err) // Add explicit error print
+		fmt.Printf("TO2 failed with error: %v\n", err)
 		return nil
 	}
 	return cred
@@ -435,17 +472,14 @@ type debugModuleWrapper struct {
 }
 
 func (d *debugModuleWrapper) Transition(active bool) error {
-	fmt.Printf("[DEBUG] Module %s Transition(active=%v)\n", d.name, active)
 	return d.DeviceModule.Transition(active)
 }
 
 func (d *debugModuleWrapper) Receive(ctx context.Context, messageName string, messageBody io.Reader, respond func(string) io.Writer, yield func()) error {
-	fmt.Printf("[DEBUG] Module %s Receive(message=%s)\n", d.name, messageName)
 	return d.DeviceModule.Receive(ctx, messageName, messageBody, respond, yield)
 }
 
 func (d *debugModuleWrapper) Yield(ctx context.Context, respond func(string) io.Writer, yield func()) error {
-	fmt.Printf("[DEBUG] Module %s Yield()\n", d.name)
 	return d.DeviceModule.Yield(ctx, respond, yield)
 }
 

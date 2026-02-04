@@ -125,20 +125,26 @@ func (h *FDOEventHandler) HandleEvent(ctx context.Context, event fdo.Event) {
 	// Type-specific data
 	switch event.Type {
 	case fdo.EventTypeDIStarted:
-		fmt.Printf("\n    DI Started!")
+		fmt.Printf("\n    🚀 DI Started - Device beginning initialization")
+	case fdo.EventTypeDIAppStartReceived:
+		fmt.Printf("\n    📨 DI AppStart Received - Manufacturer info processed")
+	case fdo.EventTypeDIVoucherCreated:
+		fmt.Printf("\n    📋 DI Voucher Created - Device voucher generated")
 	case fdo.EventTypeDICompleted:
 		if data, ok := event.Data.(fdo.DIEventData); ok {
-			fmt.Printf("\n    DI Completed - Device: %s", data.DeviceInfo)
+			fmt.Printf("\n    ✅ DI Completed - Device: %s", data.DeviceInfo)
 		}
+	case fdo.EventTypeDIFailed:
+		fmt.Printf("\n    ❌ DI Failed - Initialization error")
 	case fdo.EventTypeTO2Started:
-		fmt.Printf("\n    TO2 Started!")
+		fmt.Printf("\n    🚀 TO2 Started!")
 	case fdo.EventTypeTO2Completed:
 		if data, ok := event.Data.(fdo.TO2EventData); ok {
-			fmt.Printf("\n    TO2 Completed - Credential Reuse: %t, Attestation Mode: %v", data.CredentialReuse, data.AttestationMode)
+			fmt.Printf("\n    ✅ TO2 Completed - Credential Reuse: %t, Attestation Mode: %v", data.CredentialReuse, data.AttestationMode)
 		}
 	case fdo.EventTypeTO2Failed:
 		if data, ok := event.Data.(fdo.TO2EventData); ok {
-			fmt.Printf("\n    TO2 Failed - Credential Reuse: %t, Attestation Mode: %v", data.CredentialReuse, data.AttestationMode)
+			fmt.Printf("\n    ❌ TO2 Failed - Credential Reuse: %t, Attestation Mode: %v", data.CredentialReuse, data.AttestationMode)
 		}
 	}
 

@@ -1,5 +1,6 @@
-// SPDX-FileCopyrightText: (C) 2024 Intel Corporation
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-FileCopyrightText: (C) 2026 Dell Technologies, All Rights Reserved
+// SPDX-License-Identifier: Apache-2.0
+// Author: Brad Goodman
 
 package main
 
@@ -54,12 +55,12 @@ func main() {
 	RegisterFDOEventHandler()
 
 	// Parse command line for config file path and special operation modes
-	configPath := "config.yaml"
+	configPath := "fdoclient.cfg"
 	var directTO2Addr string
 	var diOnly bool
 	var runDemo bool
 
-	flag.StringVar(&configPath, "config", "config.yaml", "Path to configuration file")
+	flag.StringVar(&configPath, "config", "fdoclient.cfg", "Path to configuration file")
 	flag.StringVar(&directTO2Addr, "to2", "", "Skip RV and directly attempt TO2 at specified address")
 	flag.BoolVar(&diOnly, "di", false, "Run only device initialization then stop")
 	flag.BoolVar(&runDemo, "demo", false, "Run generic handler demo")
@@ -76,7 +77,7 @@ func main() {
 	config, err = LoadConfig(configPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading configuration: %v\n", err)
-		os.Exit(1)
+		return
 	}
 
 	if config.Debug {
@@ -125,12 +126,8 @@ func runClient(ctx context.Context, directTO2Addr string, diOnly bool) error {
 		return nil
 	}
 
-	// Perform DI if given a URL (manual DI mode)
-	if config.DI.URL != "" {
-		if err := performDI(ctx); err != nil {
-			return err
-		}
-	}
+	// Skip manual DI - credentials already exist
+	// DI should only happen when credentials don't exist (auto) or with -di flag (explicit)
 
 	// Try TO1+TO2
 	kexCipherSuiteID, ok := kex.CipherSuiteByName(config.Crypto.CipherSuite)

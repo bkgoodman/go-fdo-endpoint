@@ -1,5 +1,6 @@
-// SPDX-FileCopyrightText: (C) 2024 Intel Corporation
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-FileCopyrightText: (C) 2026 Dell Technologies, All Rights Reserved
+// SPDX-License-Identifier: Apache-2.0
+// Author: Brad Goodman
 
 package main
 

@@ -1,6 +1,4 @@
-# FDO Client Stub Application
-
-A stub Go application that demonstrates the usage of the [go-fdo](https://github.com/bkgoodman/go-fdo) library for FIDO Device Onboard (FDO) client functionality.
+# FIDO Device Onboarding (FDO) Onboarding Application
 
 ## Overview
 
@@ -16,6 +14,7 @@ This application provides a basic skeleton for an FDO client that can:
 ├── main.go              # Main client application
 ├── go.mod              # Go module definition
 ├── go-fdo/             # go-fdo library as git submodule
+├── fdoclient.cfg       # Default configuration file
 ├── README.md           # This file
 └── fdo-client          # Compiled binary (after build)
 ```
@@ -44,6 +43,22 @@ git submodule update --init --recursive
 ```bash
 go build -o fdo-client .
 ```
+
+## Configuration
+
+The application uses `fdoclient.cfg` as the default configuration file. You can specify a different config file using the `-config` flag:
+
+```bash
+./fdo-client -config /path/to/custom/config.yaml
+```
+
+### Device Initialization Behavior
+
+The application follows these rules for Device Initialization (DI):
+
+1. **Automatic DI**: If the credential blob file (specified by `blob_path` in config) does not exist, DI is performed automatically (factory initialization)
+2. **Explicit DI**: Use the `-di` flag to force DI regardless of existing credentials
+3. **Skip DI**: If credentials exist and no explicit DI is requested, DI is skipped and the application proceeds directly to ownership transfer
 
 ## Usage
 

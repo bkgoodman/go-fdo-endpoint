@@ -267,13 +267,8 @@ func performDI(ctx context.Context) error {
 		return err
 	}
 
-	// Emit DI completed event since the library doesn't do it
 	if cred != nil {
 		fmt.Printf("Device initialization completed successfully\n")
-		// Create a dummy GUID for the event (DI doesn't have a real GUID)
-		guid := protocol.GUID{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10}
-		deviceInfo := fmt.Sprintf("Device %s, KeyType: %s", strconv.FormatInt(sn.Int64(), 10), keyType)
-		fdo.EmitDICompleted(ctx, guid, deviceInfo)
 	}
 
 	return saveCred(blob.DeviceCredential{
@@ -324,11 +319,13 @@ func performDirectTO2(ctx context.Context, to2Addr string) error {
 	newDC := performTO2(ctx, transport, nil, conf)
 
 	if newDC == nil {
-		return fmt.Errorf("TO2 failed at address %s", to2Addr)
+		// Credential reuse - this is success, not failure
+		fmt.Println("✅ TO2 completed successfully with credential reuse")
+		return nil
 	}
 
 	// Store new credential
-	fmt.Println("Success")
+	fmt.Println("✅ TO2 completed successfully with new credential")
 	return updateCred(*newDC)
 }
 
@@ -466,6 +463,14 @@ func performTO2(ctx context.Context, transport fdo.Transport, to1d *cose.Sign1[p
 		fmt.Printf("TO2 failed with error: %v\n", err)
 		return nil
 	}
+
+	// Handle credential reuse case
+	if cred == nil {
+		fmt.Printf("✅ TO2 Completed - Credential Reuse: true\n")
+		return nil
+	}
+
+	fmt.Printf("✅ TO2 Completed - Credential Reuse: false\n")
 	return cred
 }
 

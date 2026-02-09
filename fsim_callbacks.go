@@ -114,7 +114,7 @@ func (h *FDOEventHandler) HandleEvent(ctx context.Context, event fdo.Event) {
 		fmt.Printf("\n    Protocol: v%d", event.ProtocolVersion)
 	}
 	if event.GUID != nil {
-		fmt.Printf("\n    GUID: %x", *event.GUID)
+		fmt.Printf("\n    GUID: %s", event.GUID.String())
 	}
 	if event.MessageType != nil {
 		fmt.Printf("\n    Message Type: %d", *event.MessageType)

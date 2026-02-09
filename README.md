@@ -1,4 +1,4 @@
-# FIDO Device Onboarding (FDO) Onboarding Application
+# FIDO Device Onboarding (FDO) Client Endpoint Onboarding Application
 
 ## Overview
 

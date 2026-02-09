@@ -31,6 +31,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unsafe"
 
 	"github.com/fido-device-onboard/go-fdo"
 	"github.com/fido-device-onboard/go-fdo/blob"
@@ -319,12 +320,21 @@ func performDirectTO2(ctx context.Context, to2Addr string) error {
 	newDC := performTO2(ctx, transport, nil, conf)
 
 	if newDC == nil {
+		// Check if this is successful credential reuse or a failure
+		if uintptr(unsafe.Pointer(newDC)) == 1 {
+			// This is a failure case
+			return fmt.Errorf("TO2 failed at address %s", to2Addr)
+		}
 		// Credential reuse - this is success, not failure
 		fmt.Println("✅ TO2 completed successfully with credential reuse")
 		return nil
 	}
 
 	// Store new credential
+	if uintptr(unsafe.Pointer(newDC)) == 1 {
+		// This is a failure case
+		return fmt.Errorf("TO2 failed at address %s", to2Addr)
+	}
 	fmt.Println("✅ TO2 completed successfully with new credential")
 	return updateCred(*newDC)
 }
@@ -453,6 +463,7 @@ func performTO2(ctx context.Context, transport fdo.Transport, to1d *cose.Sign1[p
 	// Call version-specific TO2 function
 	var cred *fdo.DeviceCredential
 	var err error
+
 	if config.FDOVersion == 200 {
 		cred, err = fdo.TO2v200(ctx, transport, to1d, &conf)
 	} else {
@@ -461,7 +472,8 @@ func performTO2(ctx context.Context, transport fdo.Transport, to1d *cose.Sign1[p
 	if err != nil {
 		slog.Error("TO2 failed", "error", err)
 		fmt.Printf("TO2 failed with error: %v\n", err)
-		return nil
+		// Return a special value to indicate failure vs successful credential reuse
+		return (*fdo.DeviceCredential)(unsafe.Pointer(uintptr(1)))
 	}
 
 	// Handle credential reuse case

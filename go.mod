@@ -2,13 +2,24 @@ module fdo-client
 
 go 1.25.0
 
-require github.com/fido-device-onboard/go-fdo v0.0.0-20260211XXXXX
-
 require (
+	github.com/fido-device-onboard/go-fdo v0.0.0-20260211XXXXX
+	github.com/fido-device-onboard/go-fdo/cred v0.0.0-00010101000000-000000000000
 	github.com/fido-device-onboard/go-fdo/fsim v0.0.0-20260116133239-94bd9c5d647c
 	gopkg.in/yaml.v3 v3.0.1
 )
 
-replace github.com/fido-device-onboard/go-fdo => /var/bkgdata/go-fdo-merge
+require (
+	github.com/fido-device-onboard/go-fdo/tpm v0.0.0-00010101000000-000000000000 // indirect
+	github.com/google/go-tpm v0.9.8 // indirect
+	github.com/google/go-tpm-tools v0.4.7 // indirect
+	golang.org/x/sys v0.39.0 // indirect
+)
 
-replace github.com/fido-device-onboard/go-fdo/fsim => /var/bkgdata/go-fdo-merge/fsim
+replace github.com/fido-device-onboard/go-fdo => /home/bradgoodman/go-fdo
+
+replace github.com/fido-device-onboard/go-fdo/cred => /home/bradgoodman/go-fdo/cred
+
+replace github.com/fido-device-onboard/go-fdo/fsim => /home/bradgoodman/go-fdo/fsim
+
+replace github.com/fido-device-onboard/go-fdo/tpm => /home/bradgoodman/go-fdo/tpm

@@ -6,20 +6,12 @@ package main
 
 import (
 	"context"
-	"crypto"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/hmac"
 	"crypto/rand"
-	"crypto/rsa"
-	"crypto/sha256"
-	"crypto/sha512"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"flag"
 	"fmt"
-	"hash"
 	"io"
 	"log/slog"
 	"math"
@@ -34,9 +26,9 @@ import (
 	"unsafe"
 
 	"github.com/fido-device-onboard/go-fdo"
-	"github.com/fido-device-onboard/go-fdo/blob"
 	"github.com/fido-device-onboard/go-fdo/cbor"
 	"github.com/fido-device-onboard/go-fdo/cose"
+	"github.com/fido-device-onboard/go-fdo/cred"
 	"github.com/fido-device-onboard/go-fdo/custom"
 	fdohttp "github.com/fido-device-onboard/go-fdo/http"
 	"github.com/fido-device-onboard/go-fdo/kex"
@@ -47,8 +39,29 @@ import (
 // Global configuration
 var config *Config
 
+// Global credential store - build tags select backend (blob, tpm, tpmsim)
+var credStore cred.Store
+
 func init() {
 	// No flag initialization needed - using config file
+}
+
+// openCredStore opens the credential store using the configured path
+func openCredStore() error {
+	var err error
+	credStore, err = cred.Open(config.BlobPath)
+	if err != nil {
+		return fmt.Errorf("opening credential store: %w", err)
+	}
+	return nil
+}
+
+// ensureCredStore lazily opens the credential store if not already open
+func ensureCredStore() error {
+	if credStore != nil {
+		return nil
+	}
+	return openCredStore()
 }
 
 func main() {
@@ -85,6 +98,9 @@ func main() {
 		slog.SetLogLoggerLevel(slog.LevelDebug)
 	}
 
+	// Ensure credential store is closed on exit
+	defer closeCredStore()
+
 	ctx := context.Background()
 	if err := runClient(ctx, directTO2Addr, diOnly); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -106,14 +122,14 @@ func runClient(ctx context.Context, directTO2Addr string, diOnly bool) error {
 		return performDirectTO2(ctx, directTO2Addr)
 	}
 
-	// Read device credential blob to configure client for TO1/TO2
-	dc, hmacSha256, hmacSha384, privateKey, cleanup, err := readCred()
-	if err == nil && cleanup != nil {
-		defer func() { _ = cleanup() }()
+	// Read device credential using credential store
+	if err := ensureCredStore(); err != nil {
+		return err
 	}
+	dc, hmacSha256, hmacSha384, privateKey, err := credStore.Load()
 	if err != nil {
 		// If credentials not found, automatically run DI only (factory initialization)
-		if strings.Contains(err.Error(), "no such file") || strings.Contains(err.Error(), "file not found") || strings.Contains(err.Error(), "error reading blob credential") {
+		if strings.Contains(err.Error(), "no such file") || strings.Contains(err.Error(), "file not found") || strings.Contains(err.Error(), "error reading") || strings.Contains(err.Error(), "DCTPM") {
 			fmt.Printf("Credentials not found - running DI only (factory initialization)\n")
 			if config.DI.URL == "" {
 				return fmt.Errorf("credentials not found and DI URL not configured")
@@ -150,9 +166,10 @@ func runClient(ctx context.Context, directTO2Addr string, diOnly bool) error {
 			FileSep: ";",
 			Bin:     "/bin",
 		},
-		KeyExchange:          kex.Suite(config.Crypto.KexSuite),
-		CipherSuite:          kexCipherSuiteID,
-		AllowCredentialReuse: true,
+		KeyExchange:                kex.Suite(config.Crypto.KexSuite),
+		CipherSuite:                kexCipherSuiteID,
+		AllowCredentialReuse:       true,
+		IgnoreCredentialReplacement: config.Operation.IgnoreCredentialRotation,
 	})
 
 	// Flush all pending events before exit to ensure event handlers complete
@@ -169,50 +186,37 @@ func runClient(ctx context.Context, directTO2Addr string, diOnly bool) error {
 
 	// Store new credential
 	fmt.Println("Success")
-	return updateCred(*newDC)
+	return credStore.Save(*newDC)
 }
 
 func performDI(ctx context.Context) error {
-	// Generate new key and secret
-	secret := make([]byte, 32)
-	if _, err := rand.Read(secret); err != nil {
-		return fmt.Errorf("error generating device secret: %w", err)
+	// Open credential store and generate keys using TPM or blob backend
+	if err := ensureCredStore(); err != nil {
+		return err
 	}
-	hmacSha256, hmacSha384 := hmac.New(sha256.New, secret), hmac.New(sha512.New384, secret)
 
-	var sigAlg x509.SignatureAlgorithm
 	var keyType protocol.KeyType
-	var key crypto.Signer
-	var err error
-
 	switch config.DI.Key {
 	case "ec256":
-		sigAlg = x509.ECDSAWithSHA256
 		keyType = protocol.Secp256r1KeyType
-		key, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	case "ec384":
-		sigAlg = x509.ECDSAWithSHA384
 		keyType = protocol.Secp384r1KeyType
-		key, err = ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
 	case "rsa2048":
-		sigAlg = x509.SHA256WithRSA
 		keyType = protocol.Rsa2048RestrKeyType
-		key, err = rsa.GenerateKey(rand.Reader, 2048)
 	case "rsa3072":
-		sigAlg = x509.SHA384WithRSA
 		keyType = protocol.RsaPkcsKeyType
-		key, err = rsa.GenerateKey(rand.Reader, 3072)
 	default:
 		return fmt.Errorf("unknown key type: %s", config.DI.Key)
 	}
+
+	hmacSha256, hmacSha384, key, err := credStore.NewDI(keyType)
 	if err != nil {
-		return fmt.Errorf("error generating device key: %w", err)
+		return fmt.Errorf("error generating device keys: %w", err)
 	}
 
 	// Generate CSR
 	csrDER, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
-		Subject:            pkix.Name{CommonName: "device.go-fdo-stub"},
-		SignatureAlgorithm: sigAlg,
+		Subject: pkix.Name{CommonName: "device.go-fdo-stub"},
 	}, key)
 	if err != nil {
 		return fmt.Errorf("error creating CSR: %w", err)
@@ -272,22 +276,18 @@ func performDI(ctx context.Context) error {
 		fmt.Printf("Device initialization completed successfully\n")
 	}
 
-	return saveCred(blob.DeviceCredential{
-		Active:           true,
-		DeviceCredential: *cred,
-		HmacSecret:       secret,
-		PrivateKey:       blob.Pkcs8Key{Signer: key},
-	})
+	// Save credential using the store (TPM or blob)
+	return credStore.Save(*cred)
 }
 
 func performDirectTO2(ctx context.Context, to2Addr string) error {
-	// Read device credential blob to configure client for TO2
-	dc, hmacSha256, hmacSha384, privateKey, cleanup, err := readCred()
+	// Read device credential using credential store
+	if err := ensureCredStore(); err != nil {
+		return err
+	}
+	dc, hmacSha256, hmacSha384, privateKey, err := credStore.Load()
 	if err != nil {
 		return fmt.Errorf("failed to read credentials: %w", err)
-	}
-	if cleanup != nil {
-		defer func() { _ = cleanup() }()
 	}
 
 	// Configure TO2
@@ -309,9 +309,10 @@ func performDirectTO2(ctx context.Context, to2Addr string) error {
 			FileSep: ";",
 			Bin:     "/bin",
 		},
-		KeyExchange:          kex.Suite(config.Crypto.KexSuite),
-		CipherSuite:          kexCipherSuiteID,
-		AllowCredentialReuse: true,
+		KeyExchange:                kex.Suite(config.Crypto.KexSuite),
+		CipherSuite:                kexCipherSuiteID,
+		AllowCredentialReuse:       true,
+		IgnoreCredentialReplacement: config.Operation.IgnoreCredentialRotation,
 	}
 
 	// Attempt TO2 directly at the specified address
@@ -336,7 +337,7 @@ func performDirectTO2(ctx context.Context, to2Addr string) error {
 		return fmt.Errorf("TO2 failed at address %s", to2Addr)
 	}
 	fmt.Println("✅ TO2 completed successfully with new credential")
-	return updateCred(*newDC)
+	return credStore.Save(*newDC)
 }
 
 func transferOwnership(ctx context.Context, rvInfo [][]protocol.RvInstruction, conf fdo.TO2Config) *fdo.DeviceCredential {
@@ -504,63 +505,11 @@ func (d *debugModuleWrapper) Yield(ctx context.Context, respond func(string) io.
 	return d.DeviceModule.Yield(ctx, respond, yield)
 }
 
-// Stub implementations for missing functions - these would need to be implemented based on the full go-fdo library
-
-func readCred() (*fdo.DeviceCredential, hash.Hash, hash.Hash, crypto.Signer, func() error, error) {
-	// Read device credential from file
-	var dc blob.DeviceCredential
-	blobData, err := os.ReadFile(config.BlobPath)
-	if err != nil {
-		return nil, nil, nil, nil, nil, fmt.Errorf("error reading blob credential %q: %w", config.BlobPath, err)
+// closeCredStore closes the credential store if open
+func closeCredStore() error {
+	if credStore != nil {
+		return credStore.Close()
 	}
-	if err := cbor.Unmarshal(blobData, &dc); err != nil {
-		return nil, nil, nil, nil, nil, fmt.Errorf("error parsing blob credential %q: %w", config.BlobPath, err)
-	}
-	if config.Operation.PrintDevice {
-		fmt.Printf("%+v\n", dc)
-	}
-	return &dc.DeviceCredential,
-		hmac.New(sha256.New, dc.HmacSecret),
-		hmac.New(sha512.New384, dc.HmacSecret),
-		dc.PrivateKey,
-		nil,
-		nil
-}
-
-func updateCred(cred fdo.DeviceCredential) error {
-	// Read existing credential
-	var dc blob.DeviceCredential
-	blobData, err := os.ReadFile(config.BlobPath)
-	if err != nil {
-		return fmt.Errorf("error reading blob credential %q: %w", config.BlobPath, err)
-	}
-	if err := cbor.Unmarshal(blobData, &dc); err != nil {
-		return fmt.Errorf("error parsing blob credential %q: %w", config.BlobPath, err)
-	}
-
-	// Update credential
-	dc.DeviceCredential = cred
-	return saveCred(dc)
-}
-
-func saveCred(cred blob.DeviceCredential) error {
-	// Encode device credential to temp file
-	tmp, err := os.CreateTemp(".", "fdo_cred_*")
-	if err != nil {
-		return fmt.Errorf("error creating temp file for device credential: %w", err)
-	}
-	defer func() { _ = tmp.Close() }()
-
-	if err := cbor.NewEncoder(tmp).Encode(cred); err != nil {
-		return err
-	}
-
-	// Rename temp file to blob path
-	_ = tmp.Close()
-	if err := os.Rename(tmp.Name(), config.BlobPath); err != nil {
-		return fmt.Errorf("error renaming temp blob credential to %q: %w", config.BlobPath, err)
-	}
-
 	return nil
 }
 
@@ -571,8 +520,10 @@ func tlsTransport(url string, tlsConfig interface{}) fdo.Transport {
 func tlsTransportWithVersion(url string, tlsConfig interface{}, version protocol.Version) fdo.Transport {
 	var tlsConf *tls.Config
 	if tlsConfig == nil {
+		// FDO provides its own security attestation, so TLS certificate verification
+		// is not required. Always skip TLS verification for FDO operations.
 		tlsConf = &tls.Config{
-			InsecureSkipVerify: config.Transport.InsecureTLS,
+			InsecureSkipVerify: true,
 		}
 	} else {
 		tlsConf = tlsConfig.(*tls.Config)

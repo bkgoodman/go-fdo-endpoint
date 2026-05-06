@@ -33,14 +33,14 @@ type Config struct {
 
 	// Transport configuration
 	Transport struct {
-		InsecureTLS bool   `yaml:"insecure_tls"`
-		TPMPath     string `yaml:"tpm_path"`
+		TPMPath string `yaml:"tpm_path"`
 	} `yaml:"transport"`
 
 	// Operation configuration
 	Operation struct {
-		PrintDevice bool `yaml:"print_device"`
-		RVOnly      bool `yaml:"rv_only"`
+		PrintDevice              bool `yaml:"print_device"`
+		RVOnly                   bool `yaml:"rv_only"`
+		IgnoreCredentialRotation bool `yaml:"ignore_credential_rotation"`
 	} `yaml:"operation"`
 
 	// Service Info Modules configuration
@@ -75,18 +75,18 @@ func DefaultConfig() *Config {
 			KexSuite:    "ECDH384",
 		},
 		Transport: struct {
-			InsecureTLS bool   `yaml:"insecure_tls"`
-			TPMPath     string `yaml:"tpm_path"`
+			TPMPath string `yaml:"tpm_path"`
 		}{
-			InsecureTLS: false,
-			TPMPath:     "",
+			TPMPath: "",
 		},
 		Operation: struct {
-			PrintDevice bool `yaml:"print_device"`
-			RVOnly      bool `yaml:"rv_only"`
+			PrintDevice              bool `yaml:"print_device"`
+			RVOnly                   bool `yaml:"rv_only"`
+			IgnoreCredentialRotation bool `yaml:"ignore_credential_rotation"`
 		}{
-			PrintDevice: false,
-			RVOnly:      false,
+			PrintDevice:              false,
+			RVOnly:                   false,
+			IgnoreCredentialRotation: false,
 		},
 		ServiceInfo: struct {
 			DownloadDir  string   `yaml:"download_dir"`

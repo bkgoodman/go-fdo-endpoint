@@ -1,4 +1,4 @@
 [submodule "go-fdo"]
 	path = go-fdo
-	url = /var/bkgdata/go-fdo-merge
+	url = /home/bradgoodman/go-fdo
 	branch = fdo20-merge3

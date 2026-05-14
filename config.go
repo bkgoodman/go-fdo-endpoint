@@ -50,6 +50,25 @@ type Config struct {
 		WgetDir      string   `yaml:"wget_dir"`
 		UploadPaths  []string `yaml:"upload_paths"`
 	} `yaml:"service_info"`
+
+	// FDO_SYS module configuration (for Java owner service compatibility)
+	FdoSys struct {
+		// Enabled controls whether the fdo_sys module is advertised
+		Enabled bool `yaml:"enabled"`
+		// OutputDir is where received files (ece.conf, certs, etc.) are written
+		OutputDir string `yaml:"output_dir"`
+		// CSRKeyPath is the path to the EC private key used for CSR generation.
+		// If empty, a new key is generated and saved to OutputDir/normal_key.
+		CSRKeyPath string `yaml:"csr_key_path"`
+		// CSRSubjectCN is the Common Name for the CSR subject.
+		// Defaults to "mtls.edge.internal.use.only".
+		CSRSubjectCN string `yaml:"csr_subject_cn"`
+		// SSHUsername, when set, wraps the CSR in a JSON envelope
+		// {"csr":"<PEM>","ssh_username":"<value>"} so the owner
+		// service generates an SSH keypair and writes connection-info
+		// to the secrets store. Leave empty to send a raw PEM CSR.
+		SSHUsername string `yaml:"ssh_username"`
+	} `yaml:"fdo_sys"`
 }
 
 // DefaultConfig returns a configuration with default values
@@ -98,6 +117,19 @@ func DefaultConfig() *Config {
 			EchoCommands: false,
 			WgetDir:      "",
 			UploadPaths:  []string{},
+		},
+		FdoSys: struct {
+			Enabled      bool   `yaml:"enabled"`
+			OutputDir    string `yaml:"output_dir"`
+			CSRKeyPath   string `yaml:"csr_key_path"`
+			CSRSubjectCN string `yaml:"csr_subject_cn"`
+			SSHUsername  string `yaml:"ssh_username"`
+		}{
+			Enabled:      false,
+			OutputDir:    "/hzp",
+			CSRKeyPath:   "",
+			CSRSubjectCN: "mtls.edge.internal.use.only",
+			SSHUsername:  "",
 		},
 	}
 }

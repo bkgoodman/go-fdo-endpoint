@@ -2,3 +2,5 @@ cred.bin
 fdo-client
 *.log
 go-fdo
+fdo-client-arm64
+fdo-client-arm64-ssh

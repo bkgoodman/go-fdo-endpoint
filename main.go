@@ -23,7 +23,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unsafe"
 
 	"github.com/fido-device-onboard/go-fdo"
 	"github.com/fido-device-onboard/go-fdo/cbor"
@@ -153,7 +152,7 @@ func runClient(ctx context.Context, directTO2Addr string, diOnly bool) error {
 	}
 
 	fmt.Printf("Starting device onboarding process...\n")
-	newDC := transferOwnership(ctx, dc.RvInfo, fdo.TO2Config{
+	newDC, err := transferOwnership(ctx, dc.RvInfo, fdo.TO2Config{
 		Cred:       *dc,
 		HmacSha256: hmacSha256,
 		HmacSha384: hmacSha384,
@@ -179,8 +178,12 @@ func runClient(ctx context.Context, directTO2Addr string, diOnly bool) error {
 		return nil
 	}
 
+	if err != nil {
+		return fmt.Errorf("transfer of ownership failed: %w", err)
+	}
+
 	if newDC == nil {
-		fmt.Println("Credential not updated (either due to failure of TO2 or the Credential Reuse Protocol)")
+		fmt.Println("Credential not updated (Credential Reuse Protocol)")
 		return nil
 	}
 
@@ -318,29 +321,21 @@ func performDirectTO2(ctx context.Context, to2Addr string) error {
 	// Attempt TO2 directly at the specified address
 	version := protocol.Version(config.FDOVersion)
 	transport := tlsTransportWithVersion(to2Addr, nil, version)
-	newDC := performTO2(ctx, transport, nil, conf)
+	newDC, err := performTO2(ctx, transport, nil, conf)
+	if err != nil {
+		return fmt.Errorf("TO2 failed at address %s: %w", to2Addr, err)
+	}
 
 	if newDC == nil {
-		// Check if this is successful credential reuse or a failure
-		if uintptr(unsafe.Pointer(newDC)) == 1 {
-			// This is a failure case
-			return fmt.Errorf("TO2 failed at address %s", to2Addr)
-		}
-		// Credential reuse - this is success, not failure
 		fmt.Println("✅ TO2 completed successfully with credential reuse")
 		return nil
 	}
 
-	// Store new credential
-	if uintptr(unsafe.Pointer(newDC)) == 1 {
-		// This is a failure case
-		return fmt.Errorf("TO2 failed at address %s", to2Addr)
-	}
 	fmt.Println("✅ TO2 completed successfully with new credential")
 	return credStore.Save(*newDC)
 }
 
-func transferOwnership(ctx context.Context, rvInfo [][]protocol.RvInstruction, conf fdo.TO2Config) *fdo.DeviceCredential {
+func transferOwnership(ctx context.Context, rvInfo [][]protocol.RvInstruction, conf fdo.TO2Config) (*fdo.DeviceCredential, error) {
 	var to2URLs []string
 	directives := protocol.ParseDeviceRvInfo(rvInfo)
 
@@ -373,7 +368,7 @@ func transferOwnership(ctx context.Context, rvInfo [][]protocol.RvInstruction, c
 		if directive.Delay != 0 {
 			select {
 			case <-ctx.Done():
-				return nil
+				return nil, ctx.Err()
 			case <-time.After(directive.Delay):
 			}
 		}
@@ -414,7 +409,7 @@ func transferOwnership(ctx context.Context, rvInfo [][]protocol.RvInstruction, c
 		if to1d != nil {
 			fmt.Printf("TO1 Blob: %+v\n", to1d.Payload.Val)
 		}
-		return nil
+		return nil, nil
 	}
 
 	// Try TO2 on each address only once
@@ -423,16 +418,22 @@ func transferOwnership(ctx context.Context, rvInfo [][]protocol.RvInstruction, c
 		// Use version-aware transport for TO2
 		version := protocol.Version(config.FDOVersion)
 		transport := tlsTransportWithVersion(baseURL, nil, version)
-		newDC := performTO2(ctx, transport, to1d, conf)
-		if newDC != nil {
-			return newDC
+		newDC, err := performTO2(ctx, transport, to1d, conf)
+		if err != nil {
+			slog.Error("TO2 attempt failed", "server", baseURL, "error", err)
+			continue
 		}
+		if newDC != nil {
+			return newDC, nil
+		}
+		// nil, nil means credential reuse - that's success
+		return nil, nil
 	}
 
-	return nil
+	return nil, fmt.Errorf("all TO2 attempts failed")
 }
 
-func performTO2(ctx context.Context, transport fdo.Transport, to1d *cose.Sign1[protocol.To1d, []byte], conf fdo.TO2Config) *fdo.DeviceCredential {
+func performTO2(ctx context.Context, transport fdo.Transport, to1d *cose.Sign1[protocol.To1d, []byte], conf fdo.TO2Config) (*fdo.DeviceCredential, error) {
 	// Ensure context has the correct protocol version
 	ctx = protocol.ContextWithVersion(ctx, protocol.Version(config.FDOVersion))
 
@@ -448,6 +449,13 @@ func performTO2(ctx context.Context, transport fdo.Transport, to1d *cose.Sign1[p
 	} else {
 		// Use generic handlers
 		conf.DeviceModules = CreateGenericFSIMModules(handlerManager)
+	}
+
+	// Add fdo_sys module if enabled (for Java owner service compatibility)
+	if config.FdoSys.Enabled {
+		fdoSysMod := createFdoSysModule(config)
+		conf.DeviceModules["fdo_sys"] = fdoSysMod
+		fmt.Printf("[INFO] fdo_sys module enabled (output_dir=%s)\n", config.FdoSys.OutputDir)
 	}
 
 	// Wrap modules to add debug logging for transitions
@@ -473,18 +481,17 @@ func performTO2(ctx context.Context, transport fdo.Transport, to1d *cose.Sign1[p
 	if err != nil {
 		slog.Error("TO2 failed", "error", err)
 		fmt.Printf("TO2 failed with error: %v\n", err)
-		// Return a special value to indicate failure vs successful credential reuse
-		return (*fdo.DeviceCredential)(unsafe.Pointer(uintptr(1)))
+		return nil, err
 	}
 
 	// Handle credential reuse case
 	if cred == nil {
 		fmt.Printf("✅ TO2 Completed - Credential Reuse: true\n")
-		return nil
+		return nil, nil
 	}
 
 	fmt.Printf("✅ TO2 Completed - Credential Reuse: false\n")
-	return cred
+	return cred, nil
 }
 
 // debugModuleWrapper wraps a DeviceModule to add debug logging

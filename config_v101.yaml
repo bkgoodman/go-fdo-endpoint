@@ -32,3 +32,14 @@ service_info:
   echo_commands: false
   wget_dir: ""
   upload_paths: []
+
+# FDO_SYS module (Java owner service compatibility)
+fdo_sys:
+  enabled: true
+  output_dir: "/hzp"
+  csr_subject_cn: "mtls.edge.internal.use.only"
+  # Set ssh_username to enable SSH credential provisioning.
+  # The CSR will be wrapped in a JSON envelope and the owner service
+  # will generate an SSH keypair, push authorized_keys to the device,
+  # and write connection-info to the NativeEdge secrets store.
+  ssh_username: "root"

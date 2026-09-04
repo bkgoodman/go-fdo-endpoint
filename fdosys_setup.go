@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Author: Brad Goodman
 
+//go:build fdo_sys
+
 package main
 
 import (

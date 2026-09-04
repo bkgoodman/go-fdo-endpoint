@@ -1,0 +1,40 @@
+blob_path: "/tmp/fdo-streaming-test/cred.bin"
+debug: true
+fdo_version: 200
+
+di:
+  url: "http://127.0.0.1:18080"
+  key: "ec256"
+  key_enc: "x509"
+
+crypto:
+  cipher_suite: "A128GCM"
+  kex_suite: "ECDH256"
+
+transport:
+  insecure_tls: true
+  tpm_path: ""
+
+operation:
+  print_device: false
+  rv_only: false
+
+handlers:
+  sysconfig: {}
+  payload:
+    temp_dir: "/tmp/fdo_payloads"
+    default_action: "reject"
+    mime_types:
+      application/octet-stream:
+        enabled: true
+        destination: "/tmp/fdo-streaming-test/received.bin"
+        command: "sha256sum {filename}"
+
+service_info:
+  download_dir: ""
+  echo_commands: false
+  wget_dir: ""
+  upload_paths: []
+
+fdo_sys:
+  enabled: false

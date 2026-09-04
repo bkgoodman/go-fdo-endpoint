@@ -37,6 +37,7 @@ import (
 
 // Global configuration
 var config *Config
+var configPath string
 
 // Global credential store - build tags select backend (blob, tpm, tpmsim)
 var credStore cred.Store
@@ -68,7 +69,7 @@ func main() {
 	RegisterFDOEventHandler()
 
 	// Parse command line for config file path and special operation modes
-	configPath := "fdoclient.cfg"
+	configPath = "fdoclient.cfg"
 	var directTO2Addr string
 	var diOnly bool
 	var runDemo bool
@@ -165,9 +166,9 @@ func runClient(ctx context.Context, directTO2Addr string, diOnly bool) error {
 			FileSep: ";",
 			Bin:     "/bin",
 		},
-		KeyExchange:                kex.Suite(config.Crypto.KexSuite),
-		CipherSuite:                kexCipherSuiteID,
-		AllowCredentialReuse:       true,
+		KeyExchange:                 kex.Suite(config.Crypto.KexSuite),
+		CipherSuite:                 kexCipherSuiteID,
+		AllowCredentialReuse:        true,
 		IgnoreCredentialReplacement: config.Operation.IgnoreCredentialRotation,
 	})
 
@@ -312,9 +313,9 @@ func performDirectTO2(ctx context.Context, to2Addr string) error {
 			FileSep: ";",
 			Bin:     "/bin",
 		},
-		KeyExchange:                kex.Suite(config.Crypto.KexSuite),
-		CipherSuite:                kexCipherSuiteID,
-		AllowCredentialReuse:       true,
+		KeyExchange:                 kex.Suite(config.Crypto.KexSuite),
+		CipherSuite:                 kexCipherSuiteID,
+		AllowCredentialReuse:        true,
 		IgnoreCredentialReplacement: config.Operation.IgnoreCredentialRotation,
 	}
 
@@ -438,7 +439,7 @@ func performTO2(ctx context.Context, transport fdo.Transport, to1d *cose.Sign1[p
 	ctx = protocol.ContextWithVersion(ctx, protocol.Version(config.FDOVersion))
 
 	// Try to load generic handler configuration
-	handlerManager, handlerErr := ValidateAndPrintHandlers("config_generic.yaml")
+	handlerManager, handlerErr := ValidateAndPrintHandlers(configPath)
 	if handlerErr != nil {
 		fmt.Printf("[WARNING] Failed to load generic handlers: %v\n", handlerErr)
 		fmt.Printf("[INFO] Falling back to default FSIM callbacks\n")

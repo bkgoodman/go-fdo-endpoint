@@ -147,7 +147,7 @@ func CreateGenericFSIMModules(handlerManager *GenericHandlerManager) map[string]
 	// Payload module with generic handlers and ack handler
 	if callbacks.PayloadHandle != nil {
 		payloadDevice := &fsim.Payload{
-			UnifiedHandler: &PayloadHandler{callback: callbacks.PayloadHandle},
+			ChunkedHandler: NewGenericChunkedPayloadHandler(handlerManager),
 			AckHandler:     NewGenericPayloadAckHandler(handlerManager),
 			Active:         true,
 		}
@@ -182,7 +182,7 @@ func PrintHandlerConfiguration(handlerManager *GenericHandlerManager) {
 		if handler.Enabled {
 			status = "enabled"
 		}
-		fmt.Printf("    %s: %s (command: %s)\n", mimeType, status, handler.Command)
+		fmt.Printf("    %s: %s (command: %s, destination: %s)\n", mimeType, status, handler.Command, handler.Destination)
 	}
 
 	fmt.Printf("\n========================================\n\n")

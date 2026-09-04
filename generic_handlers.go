@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -204,6 +205,7 @@ func (ghm *GenericHandlerManager) processTemplate(input string, vars map[string]
 	goTemplate = strings.ReplaceAll(goTemplate, "{filename}", "{{.filename}}")
 	goTemplate = strings.ReplaceAll(goTemplate, "{mimetype}", "{{.mimetype}}")
 	goTemplate = strings.ReplaceAll(goTemplate, "{size}", "{{.size}}")
+	goTemplate = strings.ReplaceAll(goTemplate, "{name}", "{{.name}}")
 	goTemplate = strings.ReplaceAll(goTemplate, "{parameter}", "{{.parameter}}")
 
 	// Parse the command template
@@ -247,8 +249,9 @@ type PayloadHandlerConfig struct {
 
 // PayloadMimeTypeHandler defines a handler for specific MIME types
 type PayloadMimeTypeHandler struct {
-	Enabled bool   `yaml:"enabled"`
-	Command string `yaml:"command"`
+	Enabled     bool   `yaml:"enabled"`
+	Command     string `yaml:"command"`
+	Destination string `yaml:"destination"`
 }
 
 // GenericHandlerManager manages all the generic handlers
@@ -357,17 +360,17 @@ func (ghm *GenericHandlerManager) executeCommandTemplate(commandTemplate string,
 	fmt.Printf("[HANDLER] Template: %s\n", commandTemplate)
 	fmt.Printf("[HANDLER] Resolved: %s\n", processedCommand)
 
-	// For now, just echo the command (safe default)
-	// To enable actual command execution, uncomment the following:
-	/*
-		cmd := exec.Command("sh", "-c", command)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
+	if processedCommand == "" {
+		return nil
+	}
 
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("command execution failed: %w", err)
-		}
-	*/
+	cmd := exec.Command("sh", "-c", processedCommand)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("command execution failed: %w", err)
+	}
 
 	return nil
 }
@@ -401,8 +404,11 @@ func (ghm *GenericHandlerManager) ValidateConfig() error {
 
 	// Check payload handlers
 	for mimeType, handler := range ghm.config.Handlers.Payload.MimeTypes {
-		if handler.Enabled && handler.Command == "" {
-			return fmt.Errorf("payload handler for MIME type '%s' is enabled but has no command", mimeType)
+		if handler.Enabled && handler.Command == "" && handler.Destination == "" {
+			return fmt.Errorf("payload handler for MIME type '%s' is enabled but has no command or destination", mimeType)
+		}
+		if handler.Destination != "" && !filepath.IsAbs(handler.Destination) {
+			return fmt.Errorf("payload destination for MIME type '%s' must be an absolute path", mimeType)
 		}
 	}
 

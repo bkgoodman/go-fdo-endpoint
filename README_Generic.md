@@ -48,7 +48,8 @@ handlers:
     mime_types:
       application/octet-stream:
         enabled: true
-        command: "echo 'Processing binary payload: {filename} ({size} bytes)'"
+        destination: "/var/lib/fdo/payloads/{name}"
+        command: "echo 'Processed binary payload: {filename} ({size} bytes)'"
         
       application/json:
         enabled: true
@@ -117,14 +118,17 @@ handlers:
     mime_types:
       mime/type:
         enabled: true/false                  # Enable/disable this MIME type handler
-        command: "template_command"          # Command template
+        destination: "/absolute/path"        # Optional; enables streaming and preserves output
+        command: "template_command"          # Optional post-transfer command
 ```
 
 **Template Variables:**
-- `{filename}` - Full path to the temporary payload file
+- `{filename}` - Full path to the temporary or streamed payload file
 - `{mimetype}` - The MIME type (e.g., "application/json")
 - `{size}` - Payload size in bytes
 - `{name}` - Original payload filename
+
+When `destination` is present, chunks are streamed directly to that path without retaining the complete payload in memory. Regular files use a `.partial` file and atomic rename; block devices are written directly. The destination is preserved, and `command` runs only after size and hash verification. Without `destination`, the existing buffered temporary-file behavior is used.
 
 **Examples:**
 ```yaml
@@ -172,9 +176,9 @@ All errors are reported back to the FDO server with appropriate status codes.
 ## Safety Features
 
 ### Safe Defaults
-- Commands use `echo` by default for safety
-- No actual system commands are executed unless explicitly configured
-- Temporary files are automatically cleaned up
+- Commands use `echo` in the example configuration
+- Only explicitly configured commands are executed
+- Buffered temporary files and incomplete streamed regular files are automatically cleaned up
 
 ### Validation
 - Configuration validation on startup

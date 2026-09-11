@@ -1,5 +1,5 @@
 blob_path: "/tmp/fdo-streaming-test/cred.bin"
-debug: true
+debug: false
 fdo_version: 200
 
 di:

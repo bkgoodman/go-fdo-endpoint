@@ -1,5 +1,6 @@
 cred.bin
 fdo-client
+fdo-endpoint
 *.log
 go-fdo
 fdo-client-arm64

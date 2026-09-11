@@ -171,7 +171,7 @@ type PayloadAckHandler struct{}
 // AcceptPayload decides whether to accept or reject a payload based on metadata.
 // Returns (accepted, reasonCode, message)
 func (h *PayloadAckHandler) AcceptPayload(mimeType string, name string, size uint64, metadata map[string]any) (bool, int, string) {
-	fmt.Printf("[🚫 PAYLOAD ACK] Received payload: %s (name=%s, size=%d)\n", mimeType, name, size)
+	fmt.Printf("[� PAYLOAD ACK] Received payload: %s (name=%s, size=%d)\n", mimeType, name, size)
 
 	// Accept known payload types
 	switch mimeType {
@@ -300,6 +300,12 @@ func CreateFSIMModules(callbacks *FSIMCallbacks) map[string]serviceinfo.DeviceMo
 
 	// Interop module (always included)
 	modules["fido_alliance"] = &fsim.Interop{}
+
+	// Credentials module (Registered Credentials flow): sends SSH host public keys
+	// and device IP address back to the owner during TO2, in response to the
+	// owner's -request-pubkey requests.
+	credentialsDevice := RegisterCredentialsDevice("/run/fdo/ssh-host-keys")
+	modules["fdo.credentials"] = credentialsDevice
 
 	// SysConfig module
 	if callbacks.SysConfigSetParameter != nil {

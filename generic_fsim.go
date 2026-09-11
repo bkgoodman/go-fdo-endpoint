@@ -101,7 +101,7 @@ func NewGenericPayloadAckHandler(handlerManager *GenericHandlerManager) *Generic
 // AcceptPayload decides whether to accept or reject a payload based on configuration.
 // Returns (accepted, reasonCode, message)
 func (h *GenericPayloadAckHandler) AcceptPayload(mimeType string, name string, size uint64, metadata map[string]any) (bool, int, string) {
-	fmt.Printf("[🚫 PAYLOAD ACK] Received payload: %s (name=%s, size=%d)\n", mimeType, name, size)
+	fmt.Printf("[📥 PAYLOAD ACK] Received payload: %s (name=%s, size=%d)\n", mimeType, name, size)
 
 	// Check if we have a handler for this MIME type
 	mimeHandler, exists := h.handlerManager.config.Handlers.Payload.MimeTypes[mimeType]
@@ -135,6 +135,12 @@ func CreateGenericFSIMModules(handlerManager *GenericHandlerManager) map[string]
 
 	// Interop module (always included)
 	modules["fido_alliance"] = &fsim.Interop{}
+
+	// Credentials module (Registered Credentials flow): sends SSH host public keys
+	// and device IP address back to the owner during TO2, in response to the
+	// owner's -request-pubkey requests.
+	credentialsDevice := RegisterCredentialsDevice("/run/fdo/ssh-host-keys")
+	modules["fdo.credentials"] = credentialsDevice
 
 	// SysConfig module with generic handlers
 	callbacks := GenericFSIMCallbacks(handlerManager)

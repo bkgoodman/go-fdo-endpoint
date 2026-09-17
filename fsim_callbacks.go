@@ -328,6 +328,7 @@ func CreateFSIMModules(callbacks *FSIMCallbacks) map[string]serviceinfo.DeviceMo
 		payloadDevice := &fsim.Payload{
 			UnifiedHandler: &PayloadHandler{callback: callbacks.PayloadHandle},
 			AckHandler:     &PayloadAckHandler{}, // Add ack handler to reject unknown types
+			LogProvider:    NewDiagnosticCollector("handler"),
 			Active:         true,
 		}
 		fmt.Printf("[DEBUG] Creating payload module: %T\n", payloadDevice)

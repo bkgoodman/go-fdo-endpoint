@@ -152,9 +152,15 @@ func CreateGenericFSIMModules(handlerManager *GenericHandlerManager) map[string]
 
 	// Payload module with generic handlers and ack handler
 	if callbacks.PayloadHandle != nil {
+		// Capture handler output so it can be returned to the onboarding
+		// service after each payload is applied.
+		if handlerManager.Diagnostics == nil {
+			handlerManager.Diagnostics = NewDiagnosticCollector("handler")
+		}
 		payloadDevice := &fsim.Payload{
 			ChunkedHandler: NewGenericChunkedPayloadHandler(handlerManager),
 			AckHandler:     NewGenericPayloadAckHandler(handlerManager),
+			LogProvider:    handlerManager.Diagnostics,
 			Active:         true,
 		}
 		modules["fdo.payload"] = payloadDevice

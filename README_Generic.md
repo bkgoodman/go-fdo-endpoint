@@ -173,6 +173,45 @@ The handler system provides comprehensive error reporting:
 
 All errors are reported back to the FDO server with appropriate status codes.
 
+### Diagnostic Log Upload
+
+Status codes and one-line messages travel in `payload-result`, which is bounded
+by the negotiated ServiceInfo MTU. That is enough to say *that* a handler
+failed, but not *why* — the handler's stdout and stderr would otherwise reach
+only the device console and be lost on the next reboot, which is exactly when
+an operator needs them.
+
+The client therefore tees handler command output into a `DiagnosticCollector`
+(`payload_diagnostics.go`), which implements `fsim.LogProvider`. After each
+payload is applied, the collected output is offered to the onboarding service
+using the `fdo.payload` `payload-log-*` messages — the chunking mechanism run
+in reverse, device to owner.
+
+Behaviour:
+
+| Condition | Result |
+| --------- | ------ |
+| Handler produced no output | Nothing offered |
+| Payload succeeded (status 0) | Suppressed unless `SendOnSuccess` is set |
+| Payload warned or failed (status 1 / 2) | Offered to the owner |
+| Owner does not collect logs | Owner replies `payload-log-ack [false, 5]`; the client proceeds straight to `payload-result` |
+| Output exceeds the cap (64 KiB default) | Clipped, and flagged `truncated` on the wire |
+
+Diagnostics are strictly supplementary. A failure to collect, transfer, or
+store them never changes the status reported in `payload-result` and never
+fails onboarding.
+
+The owner must opt in to receive them. With the reference server that is
+`-payload-log-dir <dir>`:
+
+```bash
+go run ./cmd server -payload-file config.json -payload-log-dir ./device-logs
+```
+
+The collector is wired up automatically for both the generic
+(`generic_fsim.go`) and callback-based (`fsim_callbacks.go`) module paths, so
+no configuration is required on the client side.
+
 ## Safety Features
 
 ### Safe Defaults

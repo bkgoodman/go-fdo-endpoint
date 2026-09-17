@@ -7,6 +7,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -257,6 +258,10 @@ type PayloadMimeTypeHandler struct {
 // GenericHandlerManager manages all the generic handlers
 type GenericHandlerManager struct {
 	config *HandlerConfig
+
+	// Diagnostics captures handler command output so it can be returned to
+	// the onboarding service after the payload is applied. May be nil.
+	Diagnostics *DiagnosticCollector
 }
 
 // NewGenericHandlerManager creates a new handler manager from config
@@ -368,7 +373,19 @@ func (ghm *GenericHandlerManager) executeCommandTemplate(commandTemplate string,
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
+	// Tee output into the diagnostic collector as well as the console, so a
+	// failure can be reported back to the onboarding service rather than
+	// being lost with the device's console on reboot.
+	if ghm.Diagnostics != nil {
+		ghm.Diagnostics.Printf("$ %s\n", processedCommand)
+		cmd.Stdout = io.MultiWriter(os.Stdout, ghm.Diagnostics)
+		cmd.Stderr = io.MultiWriter(os.Stderr, ghm.Diagnostics)
+	}
+
 	if err := cmd.Run(); err != nil {
+		if ghm.Diagnostics != nil {
+			ghm.Diagnostics.Printf("command exited with error: %v\n", err)
+		}
 		return fmt.Errorf("command execution failed: %w", err)
 	}
 

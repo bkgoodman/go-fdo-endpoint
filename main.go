@@ -29,6 +29,7 @@ import (
 	"github.com/fido-device-onboard/go-fdo/cose"
 	"github.com/fido-device-onboard/go-fdo/cred"
 	"github.com/fido-device-onboard/go-fdo/custom"
+	"github.com/fido-device-onboard/go-fdo/fsim"
 	fdohttp "github.com/fido-device-onboard/go-fdo/http"
 	"github.com/fido-device-onboard/go-fdo/kex"
 	"github.com/fido-device-onboard/go-fdo/protocol"
@@ -80,6 +81,13 @@ func main() {
 	flag.BoolVar(&diOnly, "di", false, "Run only device initialization then stop")
 	flag.BoolVar(&runDemo, "demo", false, "Run generic handler demo")
 	flag.StringVar(&genSSHKeysDir, "gen-ssh-keys", "", "Generate ed25519/ecdsa/rsa SSH host key pairs into `dir` and exit (no ssh-keygen binary required)")
+	flag.Var(&report.Files, "report", "Report mode: run TO2 only to send `file` to the owner as a standalone fdo.payload log, rejecting all payloads (may be repeated)")
+	flag.StringVar(&report.Phase, "report-phase", "", "Report mode: phase label, e.g. `install`")
+	flag.IntVar(&report.Outcome, "report-outcome", -1, "Report mode: outcome 0=success 1=warning 2=error, -1=not stated")
+	flag.StringVar(&report.Message, "report-message", "", "Report mode: one-line outcome summary")
+	flag.StringVar(&report.PayloadName, "report-payload-name", "", "Report mode: name of the earlier payload this report is about")
+	flag.StringVar(&report.PayloadVersion, "report-payload-version", "", "Report mode: version of the earlier payload this report is about")
+	flag.IntVar(&report.MaxSize, "report-max-size", defaultReportMaxSize, "Report mode: maximum `bytes` sent per report file (larger files are truncated and flagged)")
 	flag.Parse()
 
 	// If SSH host key generation is requested, do that and exit. This is used by the
@@ -454,9 +462,10 @@ func performTO2(ctx context.Context, transport fdo.Transport, to1d *cose.Sign1[p
 	// Ensure context has the correct protocol version
 	ctx = protocol.ContextWithVersion(ctx, protocol.Version(config.FDOVersion))
 
-	// Try to load generic handler configuration
-	handlerManager, handlerErr := ValidateAndPrintHandlers(configPath)
-	if handlerErr != nil {
+	var reportPayload *fsim.Payload
+	if report.enabled() {
+		conf.DeviceModules, reportPayload = report.modules()
+	} else if handlerManager, handlerErr := ValidateAndPrintHandlers(configPath); handlerErr != nil {
 		fmt.Printf("[WARNING] Failed to load generic handlers: %v\n", handlerErr)
 		fmt.Printf("[INFO] Falling back to default FSIM callbacks\n")
 
@@ -469,7 +478,7 @@ func performTO2(ctx context.Context, transport fdo.Transport, to1d *cose.Sign1[p
 	}
 
 	// Add fdo_sys module if enabled (for Java owner service compatibility)
-	if config.FdoSys.Enabled {
+	if config.FdoSys.Enabled && !report.enabled() {
 		fdoSysMod := createFdoSysModule(config)
 		conf.DeviceModules["fdo_sys"] = fdoSysMod
 		fmt.Printf("[INFO] fdo_sys module enabled (output_dir=%s)\n", config.FdoSys.OutputDir)
@@ -499,6 +508,11 @@ func performTO2(ctx context.Context, transport fdo.Transport, to1d *cose.Sign1[p
 		slog.Error("TO2 failed", "error", err)
 		fmt.Printf("TO2 failed with error: %v\n", err)
 		return nil, err
+	}
+	if reportPayload != nil {
+		if err := checkDelivered(reportPayload); err != nil {
+			return nil, err
+		}
 	}
 
 	// Handle credential reuse case

@@ -212,6 +212,38 @@ The collector is wired up automatically for both the generic
 (`generic_fsim.go`) and callback-based (`fsim_callbacks.go`) module paths, so
 no configuration is required on the client side.
 
+### Report Mode (Standalone Logs)
+
+The logs above only cover what a handler did *while the session was open*.
+Often a payload is only staged (an installer config, an install image) and
+the real outcome is known later, to another program, after the client has
+exited. Report mode returns that: it runs a new TO2 session (credential
+reuse) whose only purpose is to send files to the owner as **standalone**
+`payload-log-*` transfers (fdo.payload.md "Standalone Diagnostics"). Every
+payload the owner offers is rejected at `payload-ack` (reason 3) before any
+data is sent, and no other FSIM is offered.
+
+```bash
+fdo-endpoint -config /etc/fdo/config.yaml \
+    -report /var/log/installer/curtin-install.log -report /tmp/journal.log \
+    -report-phase install -report-outcome 2 -report-message "install failed"
+```
+
+| Flag | Meaning |
+| ---- | ------- |
+| `-report <file>` | Send `file` as a standalone log; repeat for several. Enables report mode. An unreadable file is reported as a note rather than failing the run. |
+| `-report-phase <label>` | Step the report describes, e.g. `install` |
+| `-report-outcome <n>` | `0` success, `1` warning, `2` error, `-1` (default) not stated; sent as the `payload-log-end` status |
+| `-report-message <text>` | One-line summary, sent in `payload-log-end` |
+| `-report-payload-name`, `-report-payload-version` | Identify the earlier payload this report is about |
+| `-report-max-size <bytes>` | Cap per file (default 1 MiB); larger files are truncated and flagged |
+
+The exit status is non-zero unless the owner confirmed it retained every log
+(`payload-log-result [0]`), so a hook can retry. With the reference server,
+`-payload-log-dir <dir>` enables collection; reports are stored under
+`<dir>/<device-guid>/report-<phase>-<ns>.log`, with a `.json` sidecar holding
+phase, outcome and payload correlation.
+
 ## Safety Features
 
 ### Safe Defaults

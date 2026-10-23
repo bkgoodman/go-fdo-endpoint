@@ -40,7 +40,7 @@ func readTrimmed(path string) string {
 // requests through the same TO2 ServiceInfo loop.
 func RegisterCredentialsDevice(sshKeyDir string) *fsim.CredentialsDevice {
 	if sshKeyDir == "" {
-		sshKeyDir = "/run/fdo/ssh-host-keys"
+		sshKeyDir = filepath.Join(fdoRunDir(), "ssh-host-keys")
 	}
 
 	// Create credentials device with callback for public key requests
@@ -70,7 +70,7 @@ func RegisterCredentialsDevice(sshKeyDir string) *fsim.CredentialsDevice {
 			SSHHostKeyEd25519: readTrimmed(filepath.Join(sshKeyDir, "ssh_host_ed25519_key.pub")),
 			SSHHostKeyECDSA:   readTrimmed(filepath.Join(sshKeyDir, "ssh_host_ecdsa_key.pub")),
 			SSHHostKeyRSA:     readTrimmed(filepath.Join(sshKeyDir, "ssh_host_rsa_key.pub")),
-			IPAddress:         readTrimmed("/run/fdo/device-ip.txt"),
+			IPAddress:         deviceIP(fdoRunDir()),
 		}
 
 		data, err := json.Marshal(info)

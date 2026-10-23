@@ -304,7 +304,7 @@ func CreateFSIMModules(callbacks *FSIMCallbacks) map[string]serviceinfo.DeviceMo
 	// Credentials module (Registered Credentials flow): sends SSH host public keys
 	// and device IP address back to the owner during TO2, in response to the
 	// owner's -request-pubkey requests.
-	credentialsDevice := RegisterCredentialsDevice("/run/fdo/ssh-host-keys")
+	credentialsDevice := RegisterCredentialsDevice("")
 	modules["fdo.credentials"] = credentialsDevice
 
 	// SysConfig module

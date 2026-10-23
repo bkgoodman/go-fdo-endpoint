@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -369,7 +368,7 @@ func (ghm *GenericHandlerManager) executeCommandTemplate(commandTemplate string,
 		return nil
 	}
 
-	cmd := exec.Command("sh", "-c", processedCommand)
+	cmd := shellCommand(processedCommand)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 

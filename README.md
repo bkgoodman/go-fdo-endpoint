@@ -130,6 +130,34 @@ The application supports various command-line flags to configure its behavior:
 ./fdo-client -upload /path/to/files,/another/path
 ```
 
+## Windows (and WinPE)
+
+The endpoint builds and runs on Windows, including inside WinPE:
+
+```bash
+GOOS=windows GOARCH=amd64 go build -tags=tpm -trimpath -ldflags "-s -w" -o fdo-endpoint.exe .
+```
+
+- **TPM:** `-tags=tpm` uses TPM Base Services (`tbs.dll`) through go-fdo's
+  `tpm.DefaultOpen` (`tpm/open_windows.go`); the credential written by DI or a
+  UEFI client is read from the same NV index / persistent handles as on Linux.
+  WinPE needs the WinPE-SecureStartup component (stock Windows Setup
+  `boot.wim` has it).
+- **Handler commands** (`command:` in the payload / sysconfig handlers) run via
+  `cmd.exe /S /C "<command>"` on Windows (`sh -c` elsewhere). The command line
+  is passed verbatim, so quoting follows cmd.exe rules.
+- **Run directory:** SSH host keys (`ssh-host-keys/`, from `-gen-ssh-keys`)
+  and `device-ip.txt` are read from `/run/fdo` on Linux and
+  `%ProgramData%\fdo` on Windows (`X:\ProgramData\fdo` in WinPE).
+  `FDO_RUN_DIR` overrides both. If `device-ip.txt` is absent, the first
+  global IPv4 address of an up interface is reported instead.
+- Payload `destination:` paths are plain Windows paths, e.g.
+  `'W:\fdo\install.wim'` (single quotes in YAML keep the backslashes).
+
+Verified 2026-10-22 inside WinPE (Windows Server 2025 Setup `boot.wim`) under
+QEMU: TO1/TO2 with credential reuse over TBS, 300 MB payload streamed to NTFS,
+SSH host keys registered with the owner. See `fdo-uki-build` `TEST-WINDOWS.md`.
+
 ## Implementation Notes
 
 This is a **stub application** that demonstrates the structure and API usage of the go-fdo library. The following functions are implemented as stubs and would need to be completed for a production-ready client:
